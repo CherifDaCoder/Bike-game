@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>3D Pro Bike Sim</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050505; font-family: 'Courier New', Courier, monospace; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #f0f; font-size: 28px; font-weight: bold; text-shadow: 0 0 10px #f0f; }
+        #msg { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; text-align: center; display: none; background: rgba(0,0,0,0.8); padding: 20px; border: 2px solid #f0f; }
+        .controls { position: absolute; bottom: 20px; width: 100%; text-align: center; color: #555; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div id="ui">KM/H: 0 | SCORE: 0</div>
+    <div id="msg"><h1>WRECKED!</h1><p>Press 'R' to Respawn</p></div>
+    <div class="controls">USE ARROW KEYS TO STEER & LEAN</div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.Fog(0x000000, 10, 100);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        let score = 0;
+        let speed = 0.6;
+        let obstacles = [];
+        let gameOver = false;
+
+        // --- Lights ---
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.5);
+        scene.add(hemiLight);
+
+        // --- The Motorbike Group ---
+        const bikeGroup = new THREE.Group();
+        
+        // Main Frame (The body)
+        const bodyGeo = new THREE.BoxGeometry(0.4, 0.6, 1.8);
+        const bodyMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
+        const body = new THREE.Mesh(bodyGeo, bodyMat);
+        bikeGroup.add(body);
+
+        // Handlebars
+        const barGeo = new THREE.CylinderGeometry(0.05, 0.05, 1.2);
+        const barMat = new THREE.MeshPhongMaterial({ color: 0x555555 });
+        const bars = new THREE.Mesh(barGeo, barMat);
+        bars.rotation.z = Math.PI / 2;
+        bars.position.set(0, 0.5, -0.5);
+        bikeGroup.add(bars);
+
+        // Seat
+        const seatGeo = new THREE.BoxGeometry(0.35, 0.1, 0.7);
+        const seatMat = new THREE.MeshPhongMaterial({ color: 0xff0055 });
+        const seat = new THREE.Mesh(seatGeo, seatMat);
+        seat.position.set(0, 0.35, 0.3);
+        bikeGroup.add(seat);
+
+        bikeGroup.position.y = 0.6;
+        scene.add(bikeGroup);
+
+        // --- Environment ---
+        const grid = new THREE.GridHelper(100, 40, 0xff00ff, 0x222222);
+        grid.position.z = -20;
+        scene.add(grid);
+
+        camera.position.set(0, 3, 5);
+
+        // --- Logic ---
+        const keys = { Left: false, Right: false };
+        window.addEventListener('keydown', e => {
+            if (e.key === 'ArrowLeft') keys.Left = true;
+            if (e.key === 'ArrowRight') keys.Right = true;
+            if (e.key.toLowerCase() === 'r' && gameOver) location.reload();
+        });
+        window.addEventListener('keyup', e => {
+            if (e.key === 'ArrowLeft') keys.Left = false;
+            if (e.key === 'ArrowRight') keys.Right = false;
+        });
+
+        function spawnObstacle() {
+            const obsGeo = new THREE.BoxGeometry(2, 2, 1);
+            const obsMat = new THREE.MeshPhongMaterial({ color: 0x00ffff, wireframe: true });
+            const obs = new THREE.Mesh(obsGeo, obsMat);
+            obs.position.set((Math.random() - 0.5) * 12, 1, -100);
+            scene.add(obs);
+            obstacles.push(obs);
+        }
+
+        function animate() {
+            if (gameOver) return;
+            requestAnimationFrame(animate);
+
+            // Realistic Leaning & Movement
+            let targetRotation = 0;
+            if (keys.Left && bikeGroup.position.x > -5) {
+                bikeGroup.position.x -= 0.12;
+                targetRotation = 0.4; // Lean left
+            }
+            if (keys.Right && bikeGroup.position.x < 5) {
+                bikeGroup.position.x += 0.12;
+                targetRotation = -0.4; // Lean right
+            }
+
+            // Smooth interpolation for the lean (lerp)
+            bikeGroup.rotation.z += (targetRotation - bikeGroup.rotation.z) * 0.1;
+            
+            // Move Grid for endless feel
+            grid.position.z += speed;
+            if (grid.position.z > 20) grid.position.z = 0;
+
+            if (Math.random() < 0.04) spawnObstacle();
+
+            obstacles.forEach((obs, index) => {
+                obs.position.z += speed;
+                
+                // Tightened collision box for a bike
+                if (Math.abs(obs.position.z - bikeGroup.position.z) < 1 && 
+                    Math.abs(obs.position.x - bikeGroup.position.x) < 0.8) {
+                    gameOver = true;
+                    document.getElementById('msg').style.display = 'block';
+                }
+
+                if (obs.position.z > 10) {
+                    scene.remove(obs);
+                    obstacles.splice(index, 1);
+                    score += 10;
+                    speed += 0.002;
+                    document.getElementById('ui').innerText = `KM/H: ${Math.floor(speed * 200)} | SCORE: ${score}`;
+                }
+            });
+
+            camera.position.x = bikeGroup.position.x * 0.5; // Camera follow
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
